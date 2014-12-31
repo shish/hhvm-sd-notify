@@ -16,3 +16,43 @@ which is a lie by a fraction of a second (we're still mid-initialisation,
 but hhvm initialises very quickly), but is useful (the alternative
 seems to be "wait until you are serving traffic, and have that trigger the
 ready-to-serve-traffic message")
+
+service example
+---------------
+
+```ini
+# mysite-hhvm.service
+[Unit]
+Description=HHVM FastCGI application server
+After=syslog.target network.target
+
+[Service]
+PIDFile=/run/hhvm/mysite.pid
+User=www-data
+Group=www-data
+ExecStart=/usr/bin/hhvm --mode server -vPidFile=/run/hhvm/mysite.pid --config=/etc/hhvm/mysite.hdf -vServer.Type=fastcgi -vServer.FileSocket=/tmp/php-mysite.socket
+Restart=always
+
+# automatically restart if we don't successfully serve at least one page per 10 seconds
+Type=notify
+WatchdogSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+page example
+------------
+With the call protected by `if(function_exists())` so that the same code also runs on vanilla PHP
+```php
+$app = new MyApp();
+try {
+  $app->run();
+  
+  // page was generated successfully; let systemd know we're ok
+  if(function_exists("sd_notify_watchdog")) sd_notify_watchdog();
+}
+catch(Exception $e) {
+  $app->log_error($e);
+}
+```
